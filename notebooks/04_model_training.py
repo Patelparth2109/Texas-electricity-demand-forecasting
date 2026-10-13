@@ -1,49 +1,41 @@
 # Databricks notebook source
 # DBTITLE 1,Production ML Pipeline - Electricity Demand Forecasting
-# MAGIC %md
-# MAGIC # Production ML Pipeline - Electricity Demand Forecasting
-# MAGIC
-# MAGIC ## Pipeline Overview
-# MAGIC
-# MAGIC This notebook implements a production-ready ML pipeline for short-term electricity demand forecasting with:
-# MAGIC
-# MAGIC * **Automated daily execution** via Databricks Jobs
-# MAGIC * **MLflow experiment tracking** for all training runs
-# MAGIC * **Unity Catalog model registry** for governed model versioning
-# MAGIC * **Predictions table generation** for Power BI consumption
-# MAGIC * **Proper validation methodology** to prevent overfitting
-# MAGIC
-# MAGIC ## Pipeline Stages
-# MAGIC
-# MAGIC 1. **Setup & Configuration** - Environment initialization and dependencies
-# MAGIC 2. **Data Ingestion** - Load hourly demand and weather data from Unity Catalog
-# MAGIC 3. **Feature Engineering** - Create 50+ temporal and weather features
-# MAGIC 4. **Model Training** - Train and validate multiple regression models
-# MAGIC 5. **Hyperparameter Tuning** - Optimize best model with time-series cross-validation
-# MAGIC 6. **Model Registration** - Register final model to Unity Catalog
-# MAGIC 7. **Predictions Generation** - Score test data and save to UC table
-# MAGIC 8. **Model Evaluation** - Calculate and log performance metrics
-# MAGIC
-# MAGIC ## Model Performance Target
-# MAGIC
-# MAGIC **Baseline**: EIA day-ahead forecast MAPE 2.0-3.0%  
-# MAGIC **Target**: Beat baseline with MAPE < 2.0%
-# MAGIC
-# MAGIC ---
+# # Production ML Pipeline - Electricity Demand Forecasting
+#
+# ## Pipeline Overview
+#
+# This notebook implements a production-ready ML pipeline for short-term electricity demand forecasting with:
+#
+# * **Automated daily execution** via Databricks Jobs
+# * **MLflow experiment tracking** for all training runs
+# * **Unity Catalog model registry** for governed model versioning
+# * **Predictions table generation** for Power BI consumption
+# * **Proper validation methodology** to prevent overfitting
+#
+# ## Pipeline Stages
+#
+# 1. **Setup & Configuration** - Environment initialization and dependencies
+# 2. **Data Ingestion** - Load hourly demand and weather data from Unity Catalog
+# 3. **Feature Engineering** - Create 50+ temporal and weather features
+# 4. **Model Training** - Train and validate multiple regression models
+# 5. **Hyperparameter Tuning** - Optimize best model with time-series cross-validation
+# 6. **Model Registration** - Register final model to Unity Catalog
+# 7. **Predictions Generation** - Score test data and save to UC table
+# 8. **Model Evaluation** - Calculate and log performance metrics
+#
+# ## Model Performance Target
+#
+# **Baseline**: EIA day-ahead forecast MAPE 2.0-3.0%
+# **Target**: Beat baseline with MAPE < 2.0%
+#
+# ---
 
 # COMMAND ----------
 
 # DBTITLE 1,Stage 1: Setup & Configuration
-# MAGIC %md
-# MAGIC ## Stage 1: Setup & Configuration
-# MAGIC
-# MAGIC Install required dependencies and configure MLflow experiment tracking.
-
-# COMMAND ----------
-
-# DBTITLE 1,Install Dependencies
-# Install all required packages in one cell
-%pip install xgboost lightgbm catboost mlflow --quiet
+# ## Stage 1: Setup & Configuration
+#
+# Configure MLflow experiment tracking. Dependencies are listed in requirements.txt.
 
 # COMMAND ----------
 
@@ -92,10 +84,9 @@ print(f"Predictions Table: {PREDICTIONS_TABLE}")
 # COMMAND ----------
 
 # DBTITLE 1,Stage 2: Data Ingestion
-# MAGIC %md
-# MAGIC ## Stage 2: Data Ingestion
-# MAGIC
-# MAGIC Load hourly electricity demand data with weather features from Unity Catalog gold layer.
+# ## Stage 2: Data Ingestion
+#
+# Load hourly electricity demand data with weather features from Unity Catalog gold layer.
 
 # COMMAND ----------
 
@@ -113,17 +104,16 @@ df_demand.head()
 # COMMAND ----------
 
 # DBTITLE 1,Stage 3: Feature Engineering
-# MAGIC %md
-# MAGIC ## Stage 3: Feature Engineering
-# MAGIC
-# MAGIC Create temporal and weather features to improve model performance:
-# MAGIC
-# MAGIC * Short-term demand lags (1, 2, 3, 6, 12, 72 hours)
-# MAGIC * Rolling statistics (mean, std, min, max) over multiple windows
-# MAGIC * Weather-time interaction features
-# MAGIC * Demand pattern features (trends, acceleration, volatility)
-# MAGIC * Enhanced calendar features
-# MAGIC * Weather trend features
+# ## Stage 3: Feature Engineering
+#
+# Create temporal and weather features to improve model performance:
+#
+# * Short-term demand lags (1, 2, 3, 6, 12, 72 hours)
+# * Rolling statistics (mean, std, min, max) over multiple windows
+# * Weather-time interaction features
+# * Demand pattern features (trends, acceleration, volatility)
+# * Enhanced calendar features
+# * Weather trend features
 
 # COMMAND ----------
 
@@ -277,36 +267,35 @@ print(f"\nWill exclude these from modeling: {redundant_features}")
 # COMMAND ----------
 
 # DBTITLE 1,Feature Leakage Audit Table
-# MAGIC %md
-# MAGIC ## Feature Leakage Audit — 24-Hour-Ahead Forecasting
-# MAGIC
-# MAGIC Every demand-derived feature must use observations from `t-24` or earlier.
-# MAGIC Weather and calendar features are available at prediction time via forecast or deterministic calculation.
-# MAGIC
-# MAGIC **Corrections applied in this run:**
-# MAGIC - Removed: `lag_1`, `lag_2`, `lag_3`, `lag_6`, `lag_12` (demand shift < 24h, not available at forecast time)
-# MAGIC - Fixed: All rolling demand statistics changed from `shift(1)` to `shift(24)` (window now ends at t-24)
-# MAGIC - Fixed: `demand_volatility_3h` changed from `shift(1)` to `shift(24)`
-# MAGIC - Kept: `lag_24`, `lag_48`, `lag_72`, `lag_167`, `lag_168`, `lag_169` (all shifts >= 24)
-# MAGIC
-# MAGIC | Feature | Source | Available at t-24? | Action |
-# MAGIC | --- | --- | --- | --- |
-# MAGIC | Calendar (sin/cos hour, dow, doy) | Deterministic from timestamp | Yes | Keep |
-# MAGIC | is_holiday | US holidays library | Yes | Keep |
-# MAGIC | temp_c, dew_point_c, rel_humidity, etc. | Weather forecast for target t | Yes (forecast) | Keep |
-# MAGIC | cdd_c, hdd_c | Derived from temp_c at t | Yes (forecast) | Keep |
-# MAGIC | temp_roll_mean_24 | 24h weather ending at t | Yes (observed + forecast) | Keep |
-# MAGIC | lag_24, lag_48, lag_72 | demand_mw shift >= 24 | Yes | Keep |
-# MAGIC | lag_167, lag_168, lag_169 | demand_mw shift >= 24 | Yes | Keep |
-# MAGIC | roll_mean_24, roll_std_24, roll_mean_168 | Gold table: window ending t-24 | Yes | Keep |
-# MAGIC | roll_mean_3..336, roll_std_3..336, etc. | shift(1).rolling() | **No** — used t-1 demand | **Fixed: shift(24)** |
-# MAGIC | lag_1, lag_2, lag_3, lag_6, lag_12 | demand_mw shift < 24 | **No** | **Removed** |
-# MAGIC | demand_volatility_3h | shift(1).rolling(3) | **No** — used t-1 demand | **Fixed: shift(24)** |
-# MAGIC | demand_trend_weekly | lag_24 - lag_168 | Yes | Keep |
-# MAGIC | demand_acceleration | lag_24 - lag_48 | Yes | Keep |
-# MAGIC | demand_diff_168_336 | lag_168 - shift(336) | Yes | Keep |
-# MAGIC | Weather interactions (temp_x_*) | temp_c x calendar | Yes (forecast) | Keep |
-# MAGIC | Weather trends (humidity_change_24, etc.) | Current/past weather | Yes | Keep |
+# ## Feature Leakage Audit — 24-Hour-Ahead Forecasting
+#
+# Every demand-derived feature must use observations from `t-24` or earlier.
+# Weather and calendar features are available at prediction time via forecast or deterministic calculation.
+#
+# **Corrections applied in this run:**
+# - Removed: `lag_1`, `lag_2`, `lag_3`, `lag_6`, `lag_12` (demand shift < 24h, not available at forecast time)
+# - Fixed: All rolling demand statistics changed from `shift(1)` to `shift(24)` (window now ends at t-24)
+# - Fixed: `demand_volatility_3h` changed from `shift(1)` to `shift(24)`
+# - Kept: `lag_24`, `lag_48`, `lag_72`, `lag_167`, `lag_168`, `lag_169` (all shifts >= 24)
+#
+# | Feature | Source | Available at t-24? | Action |
+# | --- | --- | --- | --- |
+# | Calendar (sin/cos hour, dow, doy) | Deterministic from timestamp | Yes | Keep |
+# | is_holiday | US holidays library | Yes | Keep |
+# | temp_c, dew_point_c, rel_humidity, etc. | Weather forecast for target t | Yes (forecast) | Keep |
+# | cdd_c, hdd_c | Derived from temp_c at t | Yes (forecast) | Keep |
+# | temp_roll_mean_24 | 24h weather ending at t | Yes (observed + forecast) | Keep |
+# | lag_24, lag_48, lag_72 | demand_mw shift >= 24 | Yes | Keep |
+# | lag_167, lag_168, lag_169 | demand_mw shift >= 24 | Yes | Keep |
+# | roll_mean_24, roll_std_24, roll_mean_168 | Gold table: window ending t-24 | Yes | Keep |
+# | roll_mean_3..336, roll_std_3..336, etc. | shift(1).rolling() | **No** — used t-1 demand | **Fixed: shift(24)** |
+# | lag_1, lag_2, lag_3, lag_6, lag_12 | demand_mw shift < 24 | **No** | **Removed** |
+# | demand_volatility_3h | shift(1).rolling(3) | **No** — used t-1 demand | **Fixed: shift(24)** |
+# | demand_trend_weekly | lag_24 - lag_168 | Yes | Keep |
+# | demand_acceleration | lag_24 - lag_48 | Yes | Keep |
+# | demand_diff_168_336 | lag_168 - shift(336) | Yes | Keep |
+# | Weather interactions (temp_x_*) | temp_c x calendar | Yes (forecast) | Keep |
+# | Weather trends (humidity_change_24, etc.) | Current/past weather | Yes | Keep |
 
 # COMMAND ----------
 
@@ -355,16 +344,15 @@ print(f"\nLeakage audit: PASSED (no demand lags < {HORIZON}h)")
 # COMMAND ----------
 
 # DBTITLE 1,Section 1: Classical ML Validation
-# MAGIC %md
-# MAGIC ## Section 1: Classical ML Validation
-# MAGIC
-# MAGIC Time-based cross-validation with 5 chronological folds, preserving temporal order (training dates < validation dates).
-# MAGIC Models: CatBoost, LightGBM, XGBoost. No StandardScaler — all models use raw features.
-# MAGIC
-# MAGIC Metrics per fold: MAPE, MAE, RMSE, bias, EIA baseline MAPE, improvement vs EIA, % hours beating EIA, top 10% demand MAPE.
-# MAGIC
-# MAGIC After CV, forward validation on Aug 1-16 and Aug 17-31 (used for model selection).
-# MAGIC Sep 1-13 is reserved as untouched holdout for final evaluation only.
+# ## Section 1: Classical ML Validation
+#
+# Time-based cross-validation with 5 chronological folds, preserving temporal order (training dates < validation dates).
+# Models: CatBoost, LightGBM, XGBoost. No StandardScaler — all models use raw features.
+#
+# Metrics per fold: MAPE, MAE, RMSE, bias, EIA baseline MAPE, improvement vs EIA, % hours beating EIA, top 10% demand MAPE.
+#
+# After CV, forward validation on Aug 1-16 and Aug 17-31 (used for model selection).
+# Sep 1-13 is reserved as untouched holdout for final evaluation only.
 
 # COMMAND ----------
 
@@ -649,17 +637,16 @@ display(high_demand_df[display_cols_hd].sort_values(['Subset', 'MAPE (%)']))
 # COMMAND ----------
 
 # DBTITLE 1,Section 2: Deep Learning Models
-# MAGIC %md
-# MAGIC ## Section 2: Deep Learning Models
-# MAGIC
-# MAGIC Isolated section — run explicitly. These cells do not execute when the normal ML validation cells are rerun.
-# MAGIC
-# MAGIC Step 1: Screen all 4 architectures (LSTM, GRU, 1D CNN, CNN-LSTM) on one representative validation period (Aug 1-16).
-# MAGIC Step 2: Take the best 1-2 architectures and run 3-fold time-based CV.
-# MAGIC
-# MAGIC Uses chronological splits, early stopping, LR scheduling, deterministic seeds.
-# MAGIC Input scaling (StandardScaler) is fit on training portion only.
-# MAGIC Sep 1-13 is reserved as untouched holdout — not used in this section.
+# ## Section 2: Deep Learning Models
+#
+# Isolated section — run explicitly. These cells do not execute when the normal ML validation cells are rerun.
+#
+# Step 1: Screen all 4 architectures (LSTM, GRU, 1D CNN, CNN-LSTM) on one representative validation period (Aug 1-16).
+# Step 2: Take the best 1-2 architectures and run 3-fold time-based CV.
+#
+# Uses chronological splits, early stopping, LR scheduling, deterministic seeds.
+# Input scaling (StandardScaler) is fit on training portion only.
+# Sep 1-13 is reserved as untouched holdout — not used in this section.
 
 # COMMAND ----------
 
@@ -1224,12 +1211,11 @@ display(residual_val_df[['Window', 'MAPE (%)', 'MAE (MW)', 'RMSE (MW)', 'Bias (M
 # COMMAND ----------
 
 # DBTITLE 1,Final Untouched Holdout
-# MAGIC %md
-# MAGIC ## Final Untouched Holdout Evaluation
-# MAGIC
-# MAGIC Sep 1-13, 2026 is the untouched forward period — NOT used during model selection or hyperparameter tuning.
-# MAGIC All finalists are trained on all data through Aug 31, 2026 and evaluated on Sep 1-13.
-# MAGIC No model registration or Champion alias change.
+# ## Final Untouched Holdout Evaluation
+#
+# Sep 1-13, 2026 is the untouched forward period — NOT used during model selection or hyperparameter tuning.
+# All finalists are trained on all data through Aug 31, 2026 and evaluated on Sep 1-13.
+# No model registration or Champion alias change.
 
 # COMMAND ----------
 

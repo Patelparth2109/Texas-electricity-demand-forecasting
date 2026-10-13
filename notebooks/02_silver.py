@@ -1,64 +1,63 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # Silver Layer — Conform, Join, Validate
-# MAGIC
-# MAGIC The Silver layer transforms the two raw Bronze tables into a single, analysis-ready **hourly dataset**.
-# MAGIC
-# MAGIC ## Core Design Decision: UTC Is the Time Spine
-# MAGIC
-# MAGIC **Every UTC hour exists exactly once.**
-# MAGIC
-# MAGIC Using UTC as the canonical time index avoids daylight saving time (DST) issues:
-# MAGIC
-# MAGIC - No missing hours during the spring-forward transition
-# MAGIC - No duplicated hours during the fall-back transition
-# MAGIC - No ambiguity when joining demand and weather data
-# MAGIC
-# MAGIC Demand and weather are joined using **UTC timestamps**. After the join, timestamps are converted to `America/Chicago` local time only for calendar-based features, since electricity demand follows local human activity patterns.
-# MAGIC
-# MAGIC This design eliminates the DST gap/duplicate risk because local time is never used as the primary time index.
-# MAGIC
-# MAGIC ## Silver Layer Responsibilities
-# MAGIC
-# MAGIC 1. **Pivot demand from long to wide format**
-# MAGIC    - `D` → `demand_mw`
-# MAGIC    - `DF` → `day_ahead_forecast_mw`
-# MAGIC
-# MAGIC 2. **Aggregate multi-city weather**
-# MAGIC    - Collapse weather observations from four cities into a single regional series
-# MAGIC    - Apply `load_weight` to create load-representative weather measures
-# MAGIC
-# MAGIC 3. **Create a continuous hourly UTC spine**
-# MAGIC    - Cover the overlapping time range between demand and weather
-# MAGIC    - Guarantee one row per UTC hour
-# MAGIC
-# MAGIC 4. **Join and validate**
-# MAGIC    - Left join demand and weather onto the UTC spine
-# MAGIC    - Flag hours with missing demand or weather observations
-# MAGIC
-# MAGIC 5. **Derive local calendar fields**
-# MAGIC    - Convert UTC → `America/Chicago`
-# MAGIC    - Create basic calendar columns needed downstream
-# MAGIC
-# MAGIC ## Layer Boundary
-# MAGIC
-# MAGIC The Silver layer remains intentionally focused on:
-# MAGIC
-# MAGIC **cleaning → conforming → joining → validating**
-# MAGIC
-# MAGIC More advanced forecasting features belong in the **Gold layer**, including:
-# MAGIC
-# MAGIC - Cyclical time encodings
-# MAGIC - Lag features
-# MAGIC - Rolling-window statistics
-# MAGIC - Heating Degree Days (HDD)
-# MAGIC - Cooling Degree Days (CDD)
-# MAGIC - Other model-specific engineered features
+# # Silver Layer — Conform, Join, Validate
+#
+# The Silver layer transforms the two raw Bronze tables into a single, analysis-ready **hourly dataset**.
+#
+# ## Core Design Decision: UTC Is the Time Spine
+#
+# **Every UTC hour exists exactly once.**
+#
+# Using UTC as the canonical time index avoids daylight saving time (DST) issues:
+#
+# - No missing hours during the spring-forward transition
+# - No duplicated hours during the fall-back transition
+# - No ambiguity when joining demand and weather data
+#
+# Demand and weather are joined using **UTC timestamps**. After the join, timestamps are converted to `America/Chicago` local time only for calendar-based features, since electricity demand follows local human activity patterns.
+#
+# This design eliminates the DST gap/duplicate risk because local time is never used as the primary time index.
+#
+# ## Silver Layer Responsibilities
+#
+# 1. **Pivot demand from long to wide format**
+#    - `D` → `demand_mw`
+#    - `DF` → `day_ahead_forecast_mw`
+#
+# 2. **Aggregate multi-city weather**
+#    - Collapse weather observations from four cities into a single regional series
+#    - Apply `load_weight` to create load-representative weather measures
+#
+# 3. **Create a continuous hourly UTC spine**
+#    - Cover the overlapping time range between demand and weather
+#    - Guarantee one row per UTC hour
+#
+# 4. **Join and validate**
+#    - Left join demand and weather onto the UTC spine
+#    - Flag hours with missing demand or weather observations
+#
+# 5. **Derive local calendar fields**
+#    - Convert UTC → `America/Chicago`
+#    - Create basic calendar columns needed downstream
+#
+# ## Layer Boundary
+#
+# The Silver layer remains intentionally focused on:
+#
+# **cleaning → conforming → joining → validating**
+#
+# More advanced forecasting features belong in the **Gold layer**, including:
+#
+# - Cyclical time encodings
+# - Lag features
+# - Rolling-window statistics
+# - Heating Degree Days (HDD)
+# - Cooling Degree Days (CDD)
+# - Other model-specific engineered features
 
 # COMMAND ----------
 
-# MAGIC %md ## Config
-# MAGIC
+# ## Config
+#
 
 # COMMAND ----------
 
@@ -87,7 +86,7 @@ spark.conf.set("spark.sql.session.timeZone", "UTC")
 
 # COMMAND ----------
 
-# MAGIC %md ## Demand: long → wide (D and DF into columns)
+# ## Demand: long → wide (D and DF into columns)
 
 # COMMAND ----------
 
@@ -115,7 +114,7 @@ demand_wide = (
 
 # COMMAND ----------
 
-# MAGIC %md ## Weather: 4 cities → one load-weighted series
+# ## Weather: 4 cities → one load-weighted series
 
 # COMMAND ----------
 
@@ -182,10 +181,9 @@ weather_agg = (
 
 print(f"  Aggregated weather hours: {weather_agg.count():,}")
 
-
 # COMMAND ----------
 
-# MAGIC %md ## Build a gap-free UTC spine over the overlap, then join
+# ## Build a gap-free UTC spine over the overlap, then join
 
 # COMMAND ----------
 
@@ -233,10 +231,9 @@ silver = (
 
 print(f"Wrote {silver.count():,} rows → {SILVER_TABLE}")
 
-
 # COMMAND ----------
 
-# MAGIC %md ## Validation
+# ## Validation
 
 # COMMAND ----------
 

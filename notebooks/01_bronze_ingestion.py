@@ -1,16 +1,14 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # Bronze Layer: EIA-930 Demand and Open-Meteo Weather Ingestion
-# MAGIC One-time historical backfill into Unity Catalog bronze Delta tables.
-# MAGIC - **Demand and EIA day-ahead forecast:** EIA v2 API. Paginated (5,000-row cap), sorted for stable pages, values cast from string → double at write.
-# MAGIC - **Weather:** Open-Meteo historical archive (ERA5). Index-aligned arrays, no API key, with a guard against silently-dropped variables.
-# MAGIC
-# MAGIC Both pulls run on the **driver** (plain HTTP, not Spark), so a small single-node or serverless cluster is all this needs. Re-running the notebook is safe: writes overwrite, so a failed pull replaces cleanly.
+# # Bronze Layer: EIA-930 Demand and Open-Meteo Weather Ingestion
+# One-time historical backfill into Unity Catalog bronze Delta tables.
+# - **Demand and EIA day-ahead forecast:** EIA v2 API. Paginated (5,000-row cap), sorted for stable pages, values cast from string → double at write.
+# - **Weather:** Open-Meteo historical archive (ERA5). Index-aligned arrays, no API key, with a guard against silently-dropped variables.
+#
+# Both pulls run on the **driver** (plain HTTP, not Spark), so a small single-node or serverless cluster is all this needs. Re-running the notebook is safe: writes overwrite, so a failed pull replaces cleanly.
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Config
+# ## Config
 
 # COMMAND ----------
 
@@ -27,13 +25,11 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{BRONZE_SCHEMA}")
 
 # COMMAND ----------
 
-
 # --- Target balancing authority ----------------------------------------------
 
 BA = "ERCO"   # ERCOT. Others: CISO, MISO, PJM, ISNE, NYIS, SWPP, ...
 
 # COMMAND ----------
-
 
 # --- EIA API key from a Databricks secret scope (never hardcode) -------------
 # Register at https://www.eia.gov/opendata/, then:
@@ -92,11 +88,9 @@ WEATHER_VARS = [
 WEATHER_START = "2015-07-01"
 WEATHER_END = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%d")
 
-
-
 # COMMAND ----------
 
-# MAGIC %md ## Shared imports
+# ## Shared imports
 
 # COMMAND ----------
 
@@ -117,7 +111,7 @@ def _get_with_retry(url, *, headers=None, params=None, timeout=90, tries=4):
 
 # COMMAND ----------
 
-# MAGIC %md ## EIA-930 — demand (D) + day-ahead forecast (DF)
+# ## EIA-930 — demand (D) + day-ahead forecast (DF)
 
 # COMMAND ----------
 
@@ -187,7 +181,7 @@ print(f"Wrote {demand_sdf.count():,} rows → {DEMAND_TABLE}")
 
 # COMMAND ----------
 
-# MAGIC %md ## Open-Meteo — historical weather (ERA5)
+# ## Open-Meteo — historical weather (ERA5)
 
 # COMMAND ----------
 
@@ -241,43 +235,30 @@ weather_sdf = (
     .saveAsTable(WEATHER_TABLE))
 print(f"Wrote {weather_sdf.count():,} rows → {WEATHER_TABLE}")
 
+# COMMAND ----------
+
+# ## NOAA HRRR — Historical Day-Ahead Weather Forecasts
+#
+# **Purpose**: Pull what the weather forecast *predicted* 24 hours ahead (not what actually happened).
+#
+# **Why this matters for fair comparison**:
+# - Current setup uses ERA5 (perfect hindsight weather observations)
+# - Operational forecasting uses weather *forecasts* (which have errors)
+# - HRRR gives us the 24h-ahead forecast that was issued at each historical time
+#
+# **HRRR Details**:
+# - High-Resolution Rapid Refresh model from NOAA
+# - 3km resolution, hourly forecasts up to 48 hours ahead
+# - Archives available on AWS S3 back to 2014
+# - Free public data, but GRIB2 format requires `cfgrib` + `xarray`
+#
+# **Dependencies:** `xarray`, `cfgrib` (see requirements.txt)
+#
+# **Trade-off**: GRIB2 parsing is slower than Open-Meteo's JSON API, but gives true forecast parity.
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## NOAA HRRR — Historical Day-Ahead Weather Forecasts
-# MAGIC
-# MAGIC **Purpose**: Pull what the weather forecast *predicted* 24 hours ahead (not what actually happened).
-# MAGIC
-# MAGIC **Why this matters for fair comparison**:
-# MAGIC - Current setup uses ERA5 (perfect hindsight weather observations)
-# MAGIC - Operational forecasting uses weather *forecasts* (which have errors)
-# MAGIC - HRRR gives us the 24h-ahead forecast that was issued at each historical time
-# MAGIC
-# MAGIC **HRRR Details**:
-# MAGIC - High-Resolution Rapid Refresh model from NOAA
-# MAGIC - 3km resolution, hourly forecasts up to 48 hours ahead
-# MAGIC - Archives available on AWS S3 back to 2014
-# MAGIC - Free public data, but GRIB2 format requires `cfgrib` + `xarray`
-# MAGIC
-# MAGIC **Dependencies:**
-# MAGIC ```
-# MAGIC %pip install cfgrib xarray
-# MAGIC ```
-# MAGIC
-# MAGIC **Trade-off**: GRIB2 parsing is slower than Open-Meteo's JSON API, but gives true forecast parity.
-
-# COMMAND ----------
-
-# GRIB2 parsing: cfgrib crashes on Serverless, trying pygrib instead
-%pip install pygrib
-dbutils.library.restartPython()
-
-# COMMAND ----------
-
-# Install required packages for GRIB2 parsing (run once)
-# %pip install cfgrib xarray
-
+# GRIB2 parsing requires xarray with a GRIB engine (see requirements.txt)
 import xarray as xr
 from datetime import datetime, timedelta
 
@@ -342,7 +323,6 @@ def hrrr_24h_forecast(lat, lon, target_date):
             continue
     
     return pd.DataFrame(hourly_data)
-
 
 # HRRR INGESTION: Now active for realistic forecast training
 # WARNING: This is SLOW - test on a small date range first!
@@ -418,21 +398,20 @@ else:
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Open-Meteo Forecast API (Operational Weather)
-# MAGIC
-# MAGIC For live forecasting (not historical backtesting), weather comes from Open-Meteo's **forecast** API:
-# MAGIC
-# MAGIC - Free, no API key needed
-# MAGIC - 16-day forecast horizon
-# MAGIC - Same JSON format as archive (easy to parse)
-# MAGIC - Same schema as the historical weather table
-# MAGIC - Only works for **future** periods (can't backtest historical)
-# MAGIC
-# MAGIC **When to use each**:
-# MAGIC 1. **ERA5 Archive** (current setup) = Perfect weather hindsight, good for model development
-# MAGIC 2. **HRRR Archive** (above) = Historical forecasts, good for realistic backtesting  
-# MAGIC 3. **Open-Meteo Forecast** (below) = Operational deployment going forward
+# ## Open-Meteo Forecast API (Operational Weather)
+#
+# For live forecasting (not historical backtesting), weather comes from Open-Meteo's **forecast** API:
+#
+# - Free, no API key needed
+# - 16-day forecast horizon
+# - Same JSON format as archive (easy to parse)
+# - Same schema as the historical weather table
+# - Only works for **future** periods (can't backtest historical)
+#
+# **When to use each**:
+# 1. **ERA5 Archive** (current setup) = Perfect weather hindsight, good for model development
+# 2. **HRRR Archive** (above) = Historical forecasts, good for realistic backtesting
+# 3. **Open-Meteo Forecast** (below) = Operational deployment going forward
 
 # COMMAND ----------
 
@@ -516,7 +495,7 @@ else:
 
 # COMMAND ----------
 
-# MAGIC %md ## Sanity checks
+# ## Sanity checks
 
 # COMMAND ----------
 

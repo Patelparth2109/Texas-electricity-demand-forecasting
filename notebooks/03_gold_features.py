@@ -1,74 +1,68 @@
 # Databricks notebook source
-# DBTITLE 1,Install Dependencies
-# MAGIC %pip install holidays --quiet
+# # Gold Layer — Feature Engineering, Split, and Baseline
+#
+# The Gold layer transforms the conformed Silver table into a **leakage-safe, model-ready feature dataset** for day-ahead energy demand forecasting.
+#
+# ## Core Rule: Only Use Information Available at Forecast Time
+#
+# The forecasting horizon is **24 hours ahead**, so every feature must reflect information that would actually be available when the forecast is generated.
+#
+# ### Demand-Derived Features
+#
+# Demand lags and rolling statistics must use observations from **`t - 24` or earlier**.
+#
+# Examples:
+#
+# - `lag_24` → demand from the same hour one day earlier
+# - `lag_168` → demand from the same hour one week earlier
+# - Rolling statistics → windows ending at `t - 24`
+#
+# A rolling window ending at `t - 1` would leak demand observations from inside the 24-hour forecast horizon and therefore cannot be used.
+#
+# ### Weather Features
+#
+# Weather features may correspond to the **target hour `t`** because, in production, the model will receive a weather forecast for that hour.
+#
+# During development:
+#
+# - Train using ERA5 observed weather
+# - Serve using forecast weather
+# - Evaluate the final production model using forecast weather for a realistic performance estimate
+#
+# This train/serve difference is tracked as **R-4**.
+#
+# ### Calendar Features
+#
+# Calendar variables are known in advance and are therefore safe at any forecast horizon.
+#
+# Examples include:
+#
+# - Hour of day
+# - Day of week
+# - Weekend indicator
+# - Month / season
+# - Holiday indicators
+# - Cyclical time encodings
+#
+# ## Why Row-Based Windows Are Safe
+#
+# Silver guarantees a **continuous, gap-free hourly UTC spine** where:
+#
+# `1 row = 1 hour`
+#
+# Therefore, Spark row-offset windows map directly to elapsed time.
+#
+# For example:
+#
+# `rowsBetween(-47, -24)`
+#
+# represents the **24-hour window ending exactly 24 hours before target hour `t`**.
+#
+# This allows lag and rolling-window features to be constructed deterministically while preserving the day-ahead leakage boundary.
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC # Gold Layer — Feature Engineering, Split, and Baseline
-# MAGIC
-# MAGIC The Gold layer transforms the conformed Silver table into a **leakage-safe, model-ready feature dataset** for day-ahead energy demand forecasting.
-# MAGIC
-# MAGIC ## Core Rule: Only Use Information Available at Forecast Time
-# MAGIC
-# MAGIC The forecasting horizon is **24 hours ahead**, so every feature must reflect information that would actually be available when the forecast is generated.
-# MAGIC
-# MAGIC ### Demand-Derived Features
-# MAGIC
-# MAGIC Demand lags and rolling statistics must use observations from **`t - 24` or earlier**.
-# MAGIC
-# MAGIC Examples:
-# MAGIC
-# MAGIC - `lag_24` → demand from the same hour one day earlier
-# MAGIC - `lag_168` → demand from the same hour one week earlier
-# MAGIC - Rolling statistics → windows ending at `t - 24`
-# MAGIC
-# MAGIC A rolling window ending at `t - 1` would leak demand observations from inside the 24-hour forecast horizon and therefore cannot be used.
-# MAGIC
-# MAGIC ### Weather Features
-# MAGIC
-# MAGIC Weather features may correspond to the **target hour `t`** because, in production, the model will receive a weather forecast for that hour.
-# MAGIC
-# MAGIC During development:
-# MAGIC
-# MAGIC - Train using ERA5 observed weather
-# MAGIC - Serve using forecast weather
-# MAGIC - Evaluate the final production model using forecast weather for a realistic performance estimate
-# MAGIC
-# MAGIC This train/serve difference is tracked as **R-4**.
-# MAGIC
-# MAGIC ### Calendar Features
-# MAGIC
-# MAGIC Calendar variables are known in advance and are therefore safe at any forecast horizon.
-# MAGIC
-# MAGIC Examples include:
-# MAGIC
-# MAGIC - Hour of day
-# MAGIC - Day of week
-# MAGIC - Weekend indicator
-# MAGIC - Month / season
-# MAGIC - Holiday indicators
-# MAGIC - Cyclical time encodings
-# MAGIC
-# MAGIC ## Why Row-Based Windows Are Safe
-# MAGIC
-# MAGIC Silver guarantees a **continuous, gap-free hourly UTC spine** where:
-# MAGIC
-# MAGIC `1 row = 1 hour`
-# MAGIC
-# MAGIC Therefore, Spark row-offset windows map directly to elapsed time.
-# MAGIC
-# MAGIC For example:
-# MAGIC
-# MAGIC `rowsBetween(-47, -24)`
-# MAGIC
-# MAGIC represents the **24-hour window ending exactly 24 hours before target hour `t`**.
-# MAGIC
-# MAGIC This allows lag and rolling-window features to be constructed deterministically while preserving the day-ahead leakage boundary.
-
-# COMMAND ----------
-
-# MAGIC %md ## Config
+# ## Config
 
 # COMMAND ----------
 
@@ -94,7 +88,7 @@ VAL_END   = "2025-12-31"  # val:   Sep-Dec 2025
 
 # COMMAND ----------
 
-# MAGIC %md ## Calendar & cyclical features (leakage-free)
+# ## Calendar & cyclical features (leakage-free)
 
 # COMMAND ----------
 
@@ -122,10 +116,9 @@ g = (
     .withColumn("is_holiday", F.date_format("ts_local", "yyyy-MM-dd").isin(holiday_strs))
 )
 
-
 # COMMAND ----------
 
-# MAGIC %md ## Weather features (serve-available via the weather forecast)
+# ## Weather features (serve-available via the weather forecast)
 
 # COMMAND ----------
 
@@ -145,7 +138,7 @@ g = (
 
 # COMMAND ----------
 
-# MAGIC %md ## Demand lags & rolling stats — all end at t − HORIZON
+# ## Demand lags & rolling stats — all end at t − HORIZON
 
 # COMMAND ----------
 
@@ -169,7 +162,7 @@ g = (
 
 # COMMAND ----------
 
-# MAGIC %md ## Split, trainability flag, write
+# ## Split, trainability flag, write
 
 # COMMAND ----------
 
@@ -241,7 +234,7 @@ print("Feature columns:", len(FEATURES))
 
 # COMMAND ----------
 
-# MAGIC %md ## Validation
+# ## Validation
 
 # COMMAND ----------
 

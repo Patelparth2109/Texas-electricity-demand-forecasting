@@ -1,0 +1,16 @@
+# Installed on the Databricks cluster (or as notebook/job environment libraries).
+# pyspark, delta, and mlflow are provided by the Databricks Runtime.
+pandas
+numpy
+requests
+holidays
+scikit-learn
+catboost
+lightgbm
+xgboost
+torch
+mlflow
+
+# HRRR prototype in notebooks/01_bronze_ingestion.py
+xarray
+cfgrib

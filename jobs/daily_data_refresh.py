@@ -1,25 +1,20 @@
 # Databricks notebook source
-# /// script
-# [tool.databricks.environment]
-# environment_version = "5"
-# ///
 # DBTITLE 1,Daily Data Refresh - Operational Maintenance
-# MAGIC %md
-# MAGIC # Daily Data Refresh - Operational Maintenance
-# MAGIC
-# MAGIC **Purpose:** Keep data current for operational forecasting
-# MAGIC
-# MAGIC **Schedule:** Run daily at 2:00 AM UTC via Databricks Job
-# MAGIC
-# MAGIC **What it does:**
-# MAGIC 1. Pull yesterday's actual demand from EIA-930
-# MAGIC 2. Pull yesterday's weather observations  
-# MAGIC 3. Refresh 24-hour weather forecast for operational predictions
-# MAGIC 4. Data flows automatically to feature table via silver/gold layers
-# MAGIC
-# MAGIC **Run time:** ~2-3 minutes
-# MAGIC
-# MAGIC ---
+# # Daily Data Refresh - Operational Maintenance
+#
+# **Purpose:** Keep data current for operational forecasting
+#
+# **Schedule:** Run daily at 2:00 AM UTC via Databricks Job
+#
+# **What it does:**
+# 1. Pull yesterday's actual demand from EIA-930
+# 2. Pull yesterday's weather observations
+# 3. Refresh 24-hour weather forecast for operational predictions
+# 4. Data flows automatically to feature table via silver/gold layers
+#
+# **Run time:** ~2-3 minutes
+#
+# ---
 
 # COMMAND ----------
 
@@ -227,21 +222,20 @@ print(f"  Merged {forecast_sdf.count():,} forecast rows into {WEATHER_FORECAST_T
 # COMMAND ----------
 
 # DBTITLE 1,Summary
-# MAGIC %md
-# MAGIC ## Summary
-# MAGIC
-# MAGIC Data is now current. Next steps:
-# MAGIC 1. Silver/gold layers will automatically process new bronze data
-# MAGIC 2. Run `daily_batch_inference` notebook to generate predictions
-# MAGIC 3. Forecasts are written to `demand_predictions`
-# MAGIC
-# MAGIC ---
-# MAGIC
-# MAGIC ### Schedule as Databricks Job
-# MAGIC
-# MAGIC To automate:
-# MAGIC 1. Create a new Job in Databricks
-# MAGIC 2. Add this notebook as a task
-# MAGIC 3. Schedule: Daily at 2:00 AM UTC
-# MAGIC 4. Attach to: Serverless or small cluster
-# MAGIC 5. Enable email notifications on failure
+# ## Summary
+#
+# Data is now current. Next steps:
+# 1. Silver/gold layers will automatically process new bronze data
+# 2. Run `daily_batch_inference` notebook to generate predictions
+# 3. Forecasts are written to `demand_predictions`
+#
+# ---
+#
+# ### Schedule as Databricks Job
+#
+# To automate:
+# 1. Create a new Job in Databricks
+# 2. Add this notebook as a task
+# 3. Schedule: Daily at 2:00 AM UTC
+# 4. Attach to: Serverless or small cluster
+# 5. Enable email notifications on failure

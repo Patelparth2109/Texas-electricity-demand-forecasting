@@ -1,33 +1,32 @@
 # Databricks notebook source
 # DBTITLE 1,Forecast Performance Monitoring
-# MAGIC %md
-# MAGIC # Forecast Performance Monitoring
-# MAGIC
-# MAGIC ## Purpose
-# MAGIC
-# MAGIC This notebook evaluates actual forecast performance by comparing predictions against observed demand.
-# MAGIC
-# MAGIC **Key Metrics:**
-# MAGIC * MAPE (Mean Absolute Percentage Error)
-# MAGIC * MAE (Mean Absolute Error)
-# MAGIC * RMSE (Root Mean Squared Error)
-# MAGIC * R² Score
-# MAGIC * Performance by hour of day
-# MAGIC * Performance by day of week
-# MAGIC * Comparison vs EIA baseline
-# MAGIC
-# MAGIC **Monitoring Triggers:**
-# MAGIC * Alert if MAPE > 3.0% (above EIA baseline)
-# MAGIC * Alert if error trend is increasing
-# MAGIC * Alert if performance degrades significantly vs previous week
-# MAGIC
-# MAGIC ## Schedule
-# MAGIC
-# MAGIC * **Runs**: Daily at 3:00 AM UTC (after actuals available)
-# MAGIC * **Duration**: ~2 minutes
-# MAGIC * **Scope**: Evaluates previous day's forecasts
-# MAGIC
-# MAGIC ---
+# # Forecast Performance Monitoring
+#
+# ## Purpose
+#
+# This notebook evaluates actual forecast performance by comparing predictions against observed demand.
+#
+# **Key Metrics:**
+# * MAPE (Mean Absolute Percentage Error)
+# * MAE (Mean Absolute Error)
+# * RMSE (Root Mean Squared Error)
+# * R² Score
+# * Performance by hour of day
+# * Performance by day of week
+# * Comparison vs EIA baseline
+#
+# **Monitoring Triggers:**
+# * Alert if MAPE > 3.0% (above EIA baseline)
+# * Alert if error trend is increasing
+# * Alert if performance degrades significantly vs previous week
+#
+# ## Schedule
+#
+# * **Runs**: Daily at 3:00 AM UTC (after actuals available)
+# * **Duration**: ~2 minutes
+# * **Scope**: Evaluates previous day's forecasts
+#
+# ---
 
 # COMMAND ----------
 
@@ -63,10 +62,9 @@ print(f"  MAPE critical: {MAPE_CRITICAL}%")
 # COMMAND ----------
 
 # DBTITLE 1,Load Forecasts and Actuals
-# MAGIC %md
-# MAGIC ## Step 1: Load Forecasts and Actuals
-# MAGIC
-# MAGIC Load forecasts from yesterday and corresponding actual demand.
+# ## Step 1: Load Forecasts and Actuals
+#
+# Load forecasts from yesterday and corresponding actual demand.
 
 # COMMAND ----------
 
@@ -123,10 +121,9 @@ if len(df_actuals) == 0:
 # COMMAND ----------
 
 # DBTITLE 1,Join and Calculate Errors
-# MAGIC %md
-# MAGIC ## Step 2: Join Forecasts with Actuals
-# MAGIC
-# MAGIC Merge forecasts and actuals to calculate errors.
+# ## Step 2: Join Forecasts with Actuals
+#
+# Merge forecasts and actuals to calculate errors.
 
 # COMMAND ----------
 
@@ -155,10 +152,9 @@ display(df_eval[['ts_local', 'actual_demand_mw', 'predicted_demand_mw', 'error_m
 # COMMAND ----------
 
 # DBTITLE 1,Calculate Performance Metrics
-# MAGIC %md
-# MAGIC ## Step 3: Calculate Performance Metrics
-# MAGIC
-# MAGIC Compute overall and segmented performance metrics.
+# ## Step 3: Calculate Performance Metrics
+#
+# Compute overall and segmented performance metrics.
 
 # COMMAND ----------
 
@@ -202,10 +198,9 @@ overall_metrics['status'] = status
 # COMMAND ----------
 
 # DBTITLE 1,Performance by Hour
-# MAGIC %md
-# MAGIC ## Step 4: Performance by Time Segments
-# MAGIC
-# MAGIC Analyze performance across different hours and days.
+# ## Step 4: Performance by Time Segments
+#
+# Analyze performance across different hours and days.
 
 # COMMAND ----------
 
@@ -230,10 +225,9 @@ print(f"\nWorst performing hours: {worst_hours.index.tolist()}")
 # COMMAND ----------
 
 # DBTITLE 1,Visualize Performance
-# MAGIC %md
-# MAGIC ## Step 5: Visualize Performance
-# MAGIC
-# MAGIC Create diagnostic plots.
+# ## Step 5: Visualize Performance
+#
+# Create diagnostic plots.
 
 # COMMAND ----------
 
@@ -292,10 +286,9 @@ print("\nPerformance visualizations generated")
 # COMMAND ----------
 
 # DBTITLE 1,Log to MLflow
-# MAGIC %md
-# MAGIC ## Step 6: Log Metrics to MLflow
-# MAGIC
-# MAGIC Track performance over time for retraining triggers.
+# ## Step 6: Log Metrics to MLflow
+#
+# Track performance over time for retraining triggers.
 
 # COMMAND ----------
 
@@ -328,10 +321,9 @@ with mlflow.start_run(run_name=f"forecast_eval_{eval_date}"):
 # COMMAND ----------
 
 # DBTITLE 1,Write Metrics Table
-# MAGIC %md
-# MAGIC ## Step 7: Write Metrics to UC Table
-# MAGIC
-# MAGIC Store metrics for historical tracking and dashboards.
+# ## Step 7: Write Metrics to UC Table
+#
+# Store metrics for historical tracking and dashboards.
 
 # COMMAND ----------
 
@@ -360,29 +352,28 @@ except Exception as e:
 # COMMAND ----------
 
 # DBTITLE 1,Monitoring Summary
-# MAGIC %md
-# MAGIC ## Monitoring Summary
-# MAGIC
-# MAGIC ### Evaluation Complete
-# MAGIC
-# MAGIC **Performance Status**: {status}
-# MAGIC
-# MAGIC **Key Metrics:**
-# MAGIC * MAPE: {overall_metrics['mape']:.2f}%
-# MAGIC * MAE: {overall_metrics['mae']:.2f} MW
-# MAGIC * RMSE: {overall_metrics['rmse']:.2f} MW
-# MAGIC * R²: {overall_metrics['r2']:.4f}
-# MAGIC
-# MAGIC **Recommendations:**
-# MAGIC * If MAPE > 3.0% for 3+ consecutive days → Trigger retraining
-# MAGIC * If MAPE trend increasing → Investigate data drift
-# MAGIC * Check worst performing hours for systematic issues
-# MAGIC
-# MAGIC ---
-# MAGIC
-# MAGIC **Evaluated Date**: {eval_date}
-# MAGIC **Computed At**: {datetime.now()}
-# MAGIC **Model Version**: {overall_metrics['model_version']}
+# ## Monitoring Summary
+#
+# ### Evaluation Complete
+#
+# **Performance Status**: {status}
+#
+# **Key Metrics:**
+# * MAPE: {overall_metrics['mape']:.2f}%
+# * MAE: {overall_metrics['mae']:.2f} MW
+# * RMSE: {overall_metrics['rmse']:.2f} MW
+# * R²: {overall_metrics['r2']:.4f}
+#
+# **Recommendations:**
+# * If MAPE > 3.0% for 3+ consecutive days → Trigger retraining
+# * If MAPE trend increasing → Investigate data drift
+# * Check worst performing hours for systematic issues
+#
+# ---
+#
+# **Evaluated Date**: {eval_date}
+# **Computed At**: {datetime.now()}
+# **Model Version**: {overall_metrics['model_version']}
 
 # COMMAND ----------
 

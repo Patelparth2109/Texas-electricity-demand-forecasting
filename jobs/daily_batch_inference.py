@@ -1,48 +1,33 @@
 # Databricks notebook source
-# /// script
-# [tool.databricks.environment]
-# base_environment = "databricks_ai_v5"
-# environment_version = "5"
-# dependencies = [
-#   "catboost",
-# ]
-# ///
 # DBTITLE 1,Daily Batch Inference - Next 24 Hours
-# MAGIC %md
-# MAGIC # Daily Batch Inference - Electricity Demand Forecasting
-# MAGIC
-# MAGIC ## Purpose
-# MAGIC
-# MAGIC This notebook generates **next-day hourly demand forecasts** (24 hours ahead) using the production model from Unity Catalog.
-# MAGIC
-# MAGIC **What it does:**
-# MAGIC 1. Loads latest available demand data (for lag features)
-# MAGIC 2. Loads next-day weather forecast
-# MAGIC 3. Applies same feature engineering as training
-# MAGIC 4. Loads registered production model from Unity Catalog
-# MAGIC 5. Generates 24-hour demand predictions
-# MAGIC 6. Writes forecasts to Unity Catalog for Power BI
-# MAGIC
-# MAGIC **What it does NOT do:**
-# MAGIC * Train or retrain models
-# MAGIC * Run hyperparameter tuning
-# MAGIC * Update model registry
-# MAGIC * Touch validation or test sets
-# MAGIC
-# MAGIC ## Daily Schedule
-# MAGIC
-# MAGIC * **Runs**: Every day at 2:00 AM UTC
-# MAGIC * **Duration**: ~5 minutes (scoring only)
-# MAGIC * **Input**: Latest demand + next-day weather forecast
-# MAGIC * **Output**: 24 hourly forecasts to `dev.stlf_gold.demand_predictions`
-# MAGIC
-# MAGIC ---
-
-# COMMAND ----------
-
-# DBTITLE 1,Install Dependencies
-# MAGIC %pip install holidays torch scikit-learn --quiet
-# MAGIC dbutils.library.restartPython()
+# # Daily Batch Inference - Electricity Demand Forecasting
+#
+# ## Purpose
+#
+# This notebook generates **next-day hourly demand forecasts** (24 hours ahead) using the production model from Unity Catalog.
+#
+# **What it does:**
+# 1. Loads latest available demand data (for lag features)
+# 2. Loads next-day weather forecast
+# 3. Applies same feature engineering as training
+# 4. Loads registered production model from Unity Catalog
+# 5. Generates 24-hour demand predictions
+# 6. Writes forecasts to Unity Catalog for Power BI
+#
+# **What it does NOT do:**
+# * Train or retrain models
+# * Run hyperparameter tuning
+# * Update model registry
+# * Touch validation or test sets
+#
+# ## Daily Schedule
+#
+# * **Runs**: Every day at 2:00 AM UTC
+# * **Duration**: ~5 minutes (scoring only)
+# * **Input**: Latest demand + next-day weather forecast
+# * **Output**: 24 hourly forecasts to `dev.stlf_gold.demand_predictions`
+#
+# ---
 
 # COMMAND ----------
 

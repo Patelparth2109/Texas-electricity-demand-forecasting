@@ -92,8 +92,9 @@ Inference rejects a batch if any prediction is missing, negative, outside 15,000
 │   ├── daily_data_refresh.py
 │   ├── daily_batch_inference.py
 │   └── forecast_evaluation.py
-└── src/
-    └── feature_engineering.py    # Pandas implementation of notebook-level features
+├── src/
+│   └── feature_engineering.py    # Pandas implementation of notebook-level features
+└── requirements.txt
 ```
 
 Notebooks are Databricks source-format exports (`.py`); import them into a Databricks workspace to run.
@@ -105,7 +106,7 @@ Notebooks are Databricks source-format exports (`.py`); import them into a Datab
    databricks secrets create-scope forecasting
    databricks secrets put-secret forecasting eia_api_key
    ```
-2. Import the repository into a Databricks workspace with Unity Catalog enabled. Tables are created under the `dev` catalog in `stlf_bronze`, `stlf_silver`, and `stlf_gold`.
+2. Import the repository into a Databricks workspace with Unity Catalog enabled, and install the packages in `requirements.txt` as cluster or job libraries. Tables are created under the `dev` catalog in `stlf_bronze`, `stlf_silver`, and `stlf_gold`.
 3. Run `notebooks/01` through `04` in order for the initial backfill and model.
 4. Create Databricks Jobs for the three notebooks in `jobs/` on the schedules above.
 
