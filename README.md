@@ -6,27 +6,27 @@ Day-ahead hourly electricity demand forecasting for ERCOT, built as a medallion 
 
 ```mermaid
 flowchart LR
-    EIA[EIA-930 API<br/>demand + day-ahead forecast] --> B1
-    ERA5[Open-Meteo archive<br/>ERA5 historical weather] --> B2
-    FC[Open-Meteo forecast API<br/>16-day weather] --> B3
+    EIA["EIA-930 API<br/>demand + day-ahead forecast"] --> B1
+    ERA5["Open-Meteo archive<br/>ERA5 historical weather"] --> B2
+    FC["Open-Meteo forecast API<br/>16-day weather"] --> B3
 
     subgraph Bronze
-        B1[eia930_demand_raw]
-        B2[open_meteo_weather_raw]
-        B3[open_meteo_forecast_weather]
+        B1["eia930_demand_raw"]
+        B2["open_meteo_weather_raw"]
+        B3["open_meteo_forecast_weather"]
     end
 
-    B1 --> S[Silver<br/>demand_weather_hourly]
+    B1 --> S["Silver<br/>demand_weather_hourly"]
     B2 --> S
     B3 --> S
-    S --> G[Gold<br/>demand_features_hourly]
-    G --> T[Model training<br/>MLflow + UC registry]
-    T --> M[(demand_forecast_gru<br/>@Champion)]
-    G --> I[Daily batch inference]
+    S --> G["Gold<br/>demand_features_hourly"]
+    G --> T["Model training<br/>MLflow + Unity Catalog"]
+    T --> M[("demand_forecast_gru<br/>Champion alias")]
+    G --> I["Daily batch inference"]
     M --> I
-    I --> P[demand_predictions]
-    P --> BI[Power BI]
-    P --> E[Forecast evaluation]
+    I --> P["demand_predictions"]
+    P --> BI["Power BI"]
+    P --> E["Forecast evaluation"]
 ```
 
 | Layer | Table | Contents |
