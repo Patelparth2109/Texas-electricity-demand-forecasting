@@ -1,102 +1,11 @@
 # Databricks notebook source
-# DBTITLE 1,Operational Deployment Summary
 # MAGIC %md
-# MAGIC # 🚀 OPERATIONAL DEPLOYMENT SUMMARY
-# MAGIC
-# MAGIC ## Model Performance Baseline
-# MAGIC
-# MAGIC **Current Model (Trained on ERA5 Historical Weather)**
-# MAGIC - ✅ **9.78% MAE improvement** over EIA day-ahead baseline
-# MAGIC - 📊 Training period: 2019-2026 (66,840 hours)
-# MAGIC - 🔬 Weather source: ERA5 reanalysis (perfect hindsight)
-# MAGIC - ⚠️ **Important**: This is a BEST-CASE benchmark using perfect historical weather
-# MAGIC
-# MAGIC ## Operational Deployment (Starting Aug 27, 2026)
-# MAGIC
-# MAGIC **For Real-World Predictions:**
-# MAGIC - 🌤️ Using **forecasted weather** (Open-Meteo 16-day forecast)
-# MAGIC - 🔄 Ingestion: Run Cell 19 daily to refresh forecasts
-# MAGIC - 📍 Table: `dev.stlf_bronze.open_meteo_forecast_weather`
-# MAGIC - ✅ Silver layer automatically uses forecast for new periods
-# MAGIC
-# MAGIC ## Expected Performance
-# MAGIC
-# MAGIC **Realistic Expectation:**
-# MAGIC - 📉 Operational MAE improvement: **~6.8-8.3%** (70-85% of 9.78%)
-# MAGIC - 📊 The gap is the **"forecast penalty"** = weather forecast error impact
-# MAGIC - ⏱️ Validate after 2-4 weeks of live predictions
-# MAGIC
-# MAGIC ## Validation Plan
-# MAGIC
-# MAGIC **To measure real operational performance:**
-# MAGIC
-# MAGIC ```python
-# MAGIC # After 2-4 weeks, compare predictions vs actuals:
-# MAGIC from sklearn.metrics import mean_absolute_error
-# MAGIC
-# MAGIC actuals = spark.table("dev.stlf_bronze.eia930_demand_raw") \
-# MAGIC     .filter("type = 'D' AND period >= '2026-08-27'") \
-# MAGIC     .toPandas()
-# MAGIC
-# MAGIC predictions = spark.table("YOUR_PREDICTIONS_TABLE") \
-# MAGIC     .filter("period >= '2026-08-27'") \
-# MAGIC     .toPandas()
-# MAGIC
-# MAGIC # Join on period
-# MAGIC merged = actuals.merge(predictions, on='period')
-# MAGIC
-# MAGIC # Calculate MAE
-# MAGIC model_mae = mean_absolute_error(merged['demand_mw'], merged['predicted_mw'])
-# MAGIC eia_mae = mean_absolute_error(merged['demand_mw'], merged['eia_dayahead_forecast_mw'])
-# MAGIC
-# MAGIC improvement = (eia_mae - model_mae) / eia_mae * 100
-# MAGIC print(f"Operational improvement: {improvement:.2f}%")
-# MAGIC print(f"Expected: 6.8-8.3%, Actual: {improvement:.2f}%")
-# MAGIC ```
-# MAGIC
-# MAGIC ## Key Decisions Made
-# MAGIC
-# MAGIC 1. ✅ **Keep 9.78% as benchmark** (trained on perfect ERA5 weather)
-# MAGIC 2. 🚀 **Deploy with forecasted weather** for operational realism
-# MAGIC 3. 📊 **Monitor performance** over next 2-4 weeks
-# MAGIC 4. 🔬 **Measure forecast penalty** = benchmark minus operational performance
-# MAGIC
-# MAGIC ## Architecture
-# MAGIC
-# MAGIC **Bronze Layer:**
-# MAGIC - `eia930_demand_raw` = EIA-930 demand + day-ahead forecast
-# MAGIC - `open_meteo_weather_raw` = Historical ERA5 weather (training)
-# MAGIC - `open_meteo_forecast_weather` = 16-day forecasts (operational) ← **NEW**
-# MAGIC
-# MAGIC **Silver Layer:**
-# MAGIC - Automatically unions historical + forecast weather
-# MAGIC - Prioritizes forecast for recent/future periods
-# MAGIC - Maintains same schema → downstream compatibility
-# MAGIC
-# MAGIC **Gold/Model:**
-# MAGIC - Trained on ERA5 (9.78% improvement)
-# MAGIC - Predicts using forecasted weather (operational)
-# MAGIC - Performance validation ongoing
-# MAGIC
-# MAGIC ---
-# MAGIC
-# MAGIC **Status**: ✅ Ready for operational deployment (Aug 27, 2026)
-# MAGIC
-# MAGIC **Next Steps**:
-# MAGIC 1. Run Cell 19 daily to refresh forecasts
-# MAGIC 2. Generate predictions using the model
-# MAGIC 3. Validate performance after 2-4 weeks
-# MAGIC 4. Measure and report the "forecast penalty"
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC # Bronze ingestion EIA-930 demand + Open-Meteo weather
+# MAGIC # Bronze Layer: EIA-930 Demand and Open-Meteo Weather Ingestion
 # MAGIC One-time historical backfill into Unity Catalog bronze Delta tables.
-# MAGIC **Demand / forecast** EIA v2 API. Paginated (5,000-row cap), sorted for stable pages, values cast from string → double at write.
-# MAGIC **Weather** Open-Meteo historical archive (ERA5). Index-aligned arrays, no API key, with a guard against silently-dropped variables.
+# MAGIC - **Demand and EIA day-ahead forecast:** EIA v2 API. Paginated (5,000-row cap), sorted for stable pages, values cast from string → double at write.
+# MAGIC - **Weather:** Open-Meteo historical archive (ERA5). Index-aligned arrays, no API key, with a guard against silently-dropped variables.
 # MAGIC
-# MAGIC Both pulls run on the **driver** (plain HTTP, not Spark), so a small single-node or serverless cluster is all this needs. Re-running the whole notebook is safe the writes overwrite, so a failed pull replaces cleanly.
+# MAGIC Both pulls run on the **driver** (plain HTTP, not Spark), so a small single-node or serverless cluster is all this needs. Re-running the notebook is safe: writes overwrite, so a failed pull replaces cleanly.
 
 # COMMAND ----------
 
@@ -109,8 +18,8 @@ from datetime import datetime, timedelta, timezone
  
 # --- Unity Catalog target -----------------------------------------------------
 
-CATALOG       = "dev"                 # <-- your catalog (keep the backfill in Dev)
-BRONZE_SCHEMA = "stlf_bronze"         # <-- your bronze schema
+CATALOG       = "dev"                 # Unity Catalog catalog (backfill runs in dev)
+BRONZE_SCHEMA = "stlf_bronze"
 DEMAND_TABLE  = f"{CATALOG}.{BRONZE_SCHEMA}.eia930_demand_raw"
 WEATHER_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.open_meteo_weather_raw"
 
@@ -127,19 +36,10 @@ BA = "ERCO"   # ERCOT. Others: CISO, MISO, PJM, ISNE, NYIS, SWPP, ...
 
 
 # --- EIA API key from a Databricks secret scope (never hardcode) -------------
-
-#   To use secrets (recommended for production):
-#   1. Register for an API key at https://www.eia.gov/opendata/
-#   2. Store it:  databricks secrets create-scope stlf
-#                 databricks secrets put-secret stlf eia_api_key
-#   3. Uncomment the line below:
-#   EIA_API_KEY = dbutils.secrets.get(scope="stlf", key="eia_api_key")
-
-# TEMPORARY: Replace 'YOUR_EIA_API_KEY_HERE' with your actual EIA API key
-
-EIA_API_KEY = "aaOJGZgwDn1lphjdSk6ncctt7Gk6B5xQ422FhuE9"
-
-
+# Register at https://www.eia.gov/opendata/, then:
+#   databricks secrets create-scope forecasting
+#   databricks secrets put-secret forecasting eia_api_key
+EIA_API_KEY = dbutils.secrets.get(scope="forecasting", key="eia_api_key")
 
 # COMMAND ----------
 
@@ -150,9 +50,9 @@ EIA_END   = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
 
 # COMMAND ----------
 
-# --- Weather: TRUE load-weighted ERCOT metros -------------------------------- #
-# load_weight reflects true historical ERCOT weather zone power draw shares.
-# Balanced to sum exactly to 1.0 for effortless matrix math in the silver layer.
+# --- Weather: load-weighted ERCOT metros ------------------------------------
+# load_weight approximates each metro's share of ERCOT load; weights sum to 1.0.
+# Must match the weights used in jobs/daily_data_refresh.py.
 CITIES = [
     {
         "city": "Houston", 
@@ -183,7 +83,7 @@ WEATHER_VARS = [
     "relative_humidity_2m",
     "wind_speed_10m",
     "cloud_cover",
-    "shortwave_radiation",       # <-- Ensure this is exactly lowercase_with_underscores
+    "shortwave_radiation",
     "direct_normal_irradiance" 
 ]
 
@@ -193,30 +93,6 @@ WEATHER_START = "2015-07-01"
 WEATHER_END = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%d")
 
 
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC # --- Weather: load-weighted ERCOT metros -------------------------------------
-# MAGIC # pop_weight ≈ metro population (millions); silver uses it for a load-weighted mean.
-# MAGIC # These four metros dominate ERCOT load — refine the set/weights as you like.
-# MAGIC
-# MAGIC CITIES = [
-# MAGIC     {"city": "Houston",     "lat": 29.7604, "lon": -95.3698, "pop_weight": 7.1},
-# MAGIC     {"city": "Dallas",      "lat": 32.7767, "lon": -96.7970, "pop_weight": 7.9},
-# MAGIC     {"city": "San Antonio", "lat": 29.4241, "lon": -98.4936, "pop_weight": 2.6},
-# MAGIC     {"city": "Austin",      "lat": 30.2672, "lon": -97.7431, "pop_weight": 2.5},
-# MAGIC ]
-# MAGIC  
-# MAGIC WEATHER_VARS = [
-# MAGIC     "temperature_2m", "dew_point_2m", "relative_humidity_2m",
-# MAGIC     "wind_speed_10m", "cloud_cover", "shortwave_radiation",
-# MAGIC ]
-# MAGIC  
-# MAGIC # ERA5 archive lags ~5 days; the recent gap is filled by the forecast API in the
-# MAGIC # scoring path, so stop the historical backfill a few days short of "now".
-# MAGIC WEATHER_START = "2015-07-01"
-# MAGIC WEATHER_END   = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%d")
 
 # COMMAND ----------
 
@@ -348,7 +224,7 @@ for c in CITIES:
     wdf["city"] = c["city"]
     wdf["lat"] = c["lat"]
     wdf["lon"] = c["lon"]
-    wdf["load_weight"] = c["load_weight"] # <-- Replaced pop_weight with load_weight
+    wdf["load_weight"] = c["load_weight"]
     frames.append(wdf)
     time.sleep(0.4)
 
@@ -374,9 +250,9 @@ print(f"Wrote {weather_sdf.count():,} rows → {WEATHER_TABLE}")
 # MAGIC **Purpose**: Pull what the weather forecast *predicted* 24 hours ahead (not what actually happened).
 # MAGIC
 # MAGIC **Why this matters for fair comparison**:
-# MAGIC - ✅ Current setup uses ERA5 (perfect hindsight weather observations)
-# MAGIC - ⚠️ Operational forecasting uses weather *forecasts* (which have errors)
-# MAGIC - 🎯 HRRR gives us the 24h-ahead forecast that was issued at each historical time
+# MAGIC - Current setup uses ERA5 (perfect hindsight weather observations)
+# MAGIC - Operational forecasting uses weather *forecasts* (which have errors)
+# MAGIC - HRRR gives us the 24h-ahead forecast that was issued at each historical time
 # MAGIC
 # MAGIC **HRRR Details**:
 # MAGIC - High-Resolution Rapid Refresh model from NOAA
@@ -384,7 +260,7 @@ print(f"Wrote {weather_sdf.count():,} rows → {WEATHER_TABLE}")
 # MAGIC - Archives available on AWS S3 back to 2014
 # MAGIC - Free public data, but GRIB2 format requires `cfgrib` + `xarray`
 # MAGIC
-# MAGIC **Installation needed** (run once on your cluster):
+# MAGIC **Dependencies:**
 # MAGIC ```
 # MAGIC %pip install cfgrib xarray
 # MAGIC ```
@@ -477,7 +353,7 @@ print("HRRR INGESTION - SAMPLE RUN (1 week test)")
 print("="*80)
 
 # Test period: Just pull 1 week to estimate runtime
-TEST_START = "2025-12-31"  # Start of your evaluation period
+TEST_START = "2025-12-31"
 TEST_END = "2026-01-07"    # 1 week later
 
 print(f"\nTest period: {TEST_START} to {TEST_END}")
@@ -506,11 +382,11 @@ for c in CITIES:
                 wdf["lon"] = c["lon"]
                 wdf["load_weight"] = c["load_weight"]
                 frames.append(wdf)
-                print(f"✓ {len(wdf)} hours")
+                print(f"{len(wdf)} hours")
             else:
-                print("⚠ No data")
+                print("No data")
         except Exception as e:
-            print(f"✗ Failed: {str(e)[:50]}...")
+            print(f"Failed: {str(e)[:50]}...")
         
         current_date += timedelta(days=1)
         time.sleep(0.1)  # Be nice to AWS S3
@@ -533,25 +409,25 @@ if frames:
         .saveAsTable(HRRR_FORECAST_TABLE))
     
     row_count = hrrr_sdf.count()
-    print(f"✓ Wrote {row_count:,} rows → {HRRR_FORECAST_TABLE}")
+    print(f"Wrote {row_count:,} rows → {HRRR_FORECAST_TABLE}")
     print(f"\nEstimated full backfill time: ~{(row_count / 168 * 4000) / 3600:.1f} hours")
     print("(Adjust TEST_START/TEST_END above to run full historical period)")
     print("="*80)
 else:
-    print("\n⚠ No HRRR data retrieved - check AWS S3 access and GRIB2 library install")
+    print("\nNo HRRR data retrieved - check AWS S3 access and GRIB2 library install")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Alternative: Open-Meteo Forecast API (For Operational Deployment)
+# MAGIC ## Open-Meteo Forecast API (Operational Weather)
 # MAGIC
-# MAGIC **For going forward** (not historical backtesting), you can use Open-Meteo's **forecast** API instead of archive:
+# MAGIC For live forecasting (not historical backtesting), weather comes from Open-Meteo's **forecast** API:
 # MAGIC
-# MAGIC - ✅ Free, no API key needed
-# MAGIC - ✅ 16-day forecast horizon
-# MAGIC - ✅ Same JSON format as archive (easy to parse)
-# MAGIC - ✅ Same schema as your current weather table
-# MAGIC - ⚠️ Only works for **future** periods (can't backtest historical)
+# MAGIC - Free, no API key needed
+# MAGIC - 16-day forecast horizon
+# MAGIC - Same JSON format as archive (easy to parse)
+# MAGIC - Same schema as the historical weather table
+# MAGIC - Only works for **future** periods (can't backtest historical)
 # MAGIC
 # MAGIC **When to use each**:
 # MAGIC 1. **ERA5 Archive** (current setup) = Perfect weather hindsight, good for model development
@@ -607,9 +483,9 @@ for c in CITIES:
         wdf["lon"] = c["lon"]
         wdf["load_weight"] = c["load_weight"]
         frames.append(wdf)
-        print(f"✓ {len(wdf)} hours")
+        print(f"{len(wdf)} hours")
     except Exception as e:
-        print(f"✗ Failed: {e}")
+        print(f"Failed: {e}")
     time.sleep(0.4)
 
 if frames:
@@ -631,12 +507,12 @@ if frames:
     last_period = forecast_pdf['time'].max()
     
     print(f"\n{'='*80}")
-    print(f"✓ Wrote {forecast_sdf.count():,} rows → {FORECAST_TABLE}")
+    print(f"Wrote {forecast_sdf.count():,} rows → {FORECAST_TABLE}")
     print(f"  Coverage: {first_period} → {last_period}")
     print(f"  Source: Open-Meteo 16-day forecast (operational)")
     print("="*80)
 else:
-    print("\n⚠ No forecast data retrieved")
+    print("\nNo forecast data retrieved")
 
 # COMMAND ----------
 

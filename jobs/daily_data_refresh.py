@@ -5,7 +5,7 @@
 # ///
 # DBTITLE 1,Daily Data Refresh - Operational Maintenance
 # MAGIC %md
-# MAGIC # ♻️ Daily Data Refresh - Operational Maintenance
+# MAGIC # Daily Data Refresh - Operational Maintenance
 # MAGIC
 # MAGIC **Purpose:** Keep data current for operational forecasting
 # MAGIC
@@ -133,7 +133,7 @@ if eia_rows:
     
     print(f"  Merged {len(eia_rows):,} demand rows")
 else:
-    print("  ⚠️  No new demand data found")
+    print("   No new demand data found")
 
 # COMMAND ----------
 
@@ -182,7 +182,7 @@ target.alias("t").merge(
     "t.period = s.period AND t.city = s.city"
 ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
-print(f"  ✅ Merged {weather_sdf.count():,} weather rows")
+print(f"  Merged {weather_sdf.count():,} weather rows")
 
 # COMMAND ----------
 
@@ -228,12 +228,12 @@ print(f"  Merged {forecast_sdf.count():,} forecast rows into {WEATHER_FORECAST_T
 
 # DBTITLE 1,Summary
 # MAGIC %md
-# MAGIC ## 🎉 Daily Refresh Complete!
+# MAGIC ## Summary
 # MAGIC
 # MAGIC Data is now current. Next steps:
 # MAGIC 1. Silver/gold layers will automatically process new bronze data
 # MAGIC 2. Run `daily_batch_inference` notebook to generate predictions
-# MAGIC 3. Monitor `daily_forecasts` table for operational forecasts
+# MAGIC 3. Forecasts are written to `demand_predictions`
 # MAGIC
 # MAGIC ---
 # MAGIC

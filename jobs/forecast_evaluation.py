@@ -45,7 +45,7 @@ CATALOG = "dev"
 SCHEMA = "stlf_gold"
 
 # Tables
-FORECAST_TABLE = f"{CATALOG}.{SCHEMA}.daily_forecasts"
+FORECAST_TABLE = f"{CATALOG}.{SCHEMA}.demand_predictions"  # written by daily_batch_inference
 ACTUALS_TABLE = f"{CATALOG}.{SCHEMA}.demand_features_hourly"
 METRICS_TABLE = f"{CATALOG}.{SCHEMA}.forecast_metrics"
 
@@ -78,11 +78,10 @@ print(f"Evaluating forecasts for: {eval_date}\n")
 # Load forecasts generated for yesterday
 query_forecast = f"""
 SELECT 
-    forecast_timestamp,
+    prediction_timestamp AS forecast_timestamp,
     ts_local,
     ts_utc,
     respondent,
-    forecast_hour,
     predicted_demand_mw,
     temp_c,
     model_version
@@ -92,10 +91,10 @@ ORDER BY ts_utc
 """
 
 df_forecast = spark.sql(query_forecast).toPandas()
-print(f"✓ Loaded {len(df_forecast)} forecast records")
+print(f"Loaded {len(df_forecast)} forecast records")
 
 if len(df_forecast) == 0:
-    print(f"⚠ No forecasts found for {eval_date}. Exiting.")
+    print(f"No forecasts found for {eval_date}. Exiting.")
     dbutils.notebook.exit("No forecasts to evaluate")
 
 # COMMAND ----------
@@ -115,10 +114,10 @@ ORDER BY ts_utc
 """
 
 df_actuals = spark.sql(query_actuals).toPandas()
-print(f"✓ Loaded {len(df_actuals)} actual demand records")
+print(f"Loaded {len(df_actuals)} actual demand records")
 
 if len(df_actuals) == 0:
-    print(f"⚠ No actuals available yet for {eval_date}. Exiting.")
+    print(f"No actuals available yet for {eval_date}. Exiting.")
     dbutils.notebook.exit("Actuals not available")
 
 # COMMAND ----------
@@ -139,7 +138,7 @@ df_eval = df_forecast.merge(
     how='inner'
 )
 
-print(f"\n✓ Joined forecast and actuals: {len(df_eval)} records")
+print(f"\nJoined forecast and actuals: {len(df_eval)} records")
 
 # Calculate error metrics
 df_eval['error_mw'] = df_eval['actual_demand_mw'] - df_eval['predicted_demand_mw']
@@ -189,13 +188,13 @@ print("="*70)
 
 # Status check
 if overall_metrics['mape'] <= MAPE_WARNING:
-    status = "✓ GOOD"
+    status = "GOOD"
     print(f"\n{status} - Performance within target")
 elif overall_metrics['mape'] <= MAPE_CRITICAL:
-    status = "⚠ WARNING"
+    status = "WARNING"
     print(f"\n{status} - Performance approaching threshold")
 else:
-    status = "✗ CRITICAL"
+    status = "CRITICAL"
     print(f"\n{status} - Performance exceeds EIA baseline!")
 
 overall_metrics['status'] = status
@@ -288,7 +287,7 @@ ax4.tick_params(axis='x', rotation=45)
 plt.tight_layout()
 plt.show()
 
-print("\n✓ Performance visualizations generated")
+print("\nPerformance visualizations generated")
 
 # COMMAND ----------
 
@@ -324,7 +323,7 @@ with mlflow.start_run(run_name=f"forecast_eval_{eval_date}"):
         mlflow.log_metric(f'worst_hour_{i}', hour)
         mlflow.log_metric(f'worst_hour_{i}_mape', row['Avg MAPE (%)'])
     
-    print(f"✓ Metrics logged to MLflow")
+    print(f"Metrics logged to MLflow")
 
 # COMMAND ----------
 
@@ -348,15 +347,15 @@ try:
         .mode("append") \
         .saveAsTable(METRICS_TABLE)
     
-    print(f"✓ Metrics written successfully")
+    print(f"Metrics written successfully")
     
 except Exception as e:
-    print(f"⚠ Failed to write metrics: {e}")
+    print(f"Failed to write metrics: {e}")
     print("  Creating table...")
     df_metrics_spark.write \
         .mode("overwrite") \
         .saveAsTable(METRICS_TABLE)
-    print(f"✓ Table created and metrics written")
+    print(f"Table created and metrics written")
 
 # COMMAND ----------
 

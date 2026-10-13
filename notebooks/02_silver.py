@@ -26,7 +26,7 @@
 # MAGIC
 # MAGIC 2. **Aggregate multi-city weather**
 # MAGIC    - Collapse weather observations from four cities into a single regional series
-# MAGIC    - Apply `pop_weight` to create load-representative weather measures
+# MAGIC    - Apply `load_weight` to create load-representative weather measures
 # MAGIC
 # MAGIC 3. **Create a continuous hourly UTC spine**
 # MAGIC    - Cover the overlapping time range between demand and weather
@@ -119,7 +119,7 @@ demand_wide = (
 
 # COMMAND ----------
 
-# Source column names must perfectly match what came out of the Bronze dataframe columns!
+# (bronze column, silver column)
 WEATHER_MAP = [
     ("temperature_2m", "temp_c"),
     ("apparent_temperature", "apparent_temp_c"),
@@ -221,7 +221,6 @@ silver = (
     .withColumn("is_weekend", F.dayofweek("ts_local").isin(1, 7))
     # quality flags — never silently impute in silver
     .withColumn("demand_is_missing", F.col("demand_mw").isNull())
-    # Changed: Explicitly checks temp_c to preserve tracking consistency 
     .withColumn("weather_is_missing", F.col("temp_c").isNull()) 
     .withColumn("respondent", F.coalesce("respondent", F.lit(BA)))
     .withColumn("_silver_built_at", F.current_timestamp())

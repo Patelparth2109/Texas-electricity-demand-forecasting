@@ -88,10 +88,9 @@ BASE_C    = 18.33         # 65 °F, standard HDD/CDD balance point for electrici
  
 # Chronological split — NEVER random for time series. Contiguous blocks, test is
 # strictly the most recent data (mimics forecasting the future you haven't seen).
-TRAIN_END = "2025-08-31"  # Include summer 2025 peaks (avg 64.5K MW, max 83.6K MW)
-VAL_END   = "2026-02-28"  # val: winter 2026 for proper seasonalityain: 2019-01 .. 2024-12   (~6 yrs)
-VAL_END   = "2025-12-31"  # val:   2025                 (~1 yr)
-                          # test: Mar 2026 onward (most recent, incl. summer 2026)
+TRAIN_END = "2025-08-31"  # train: through summer 2025 (includes 2025 peak season)
+VAL_END   = "2025-12-31"  # val:   Sep-Dec 2025
+                          # test:  2026 onward (most recent data)
 
 # COMMAND ----------
 
@@ -196,15 +195,15 @@ FEATURES = [
     "sin_doy",
     "cos_doy",
     "is_holiday",
-    "hour_day_interaction", # <-- Added: Helps trees map weekday vs weekend peak behaviors
+    "hour_day_interaction",
     "temp_c",
-    "apparent_temp_c",      # <-- Added: Captures true consumer cooling comfort limits 
+    "apparent_temp_c",
     "dew_point_c",
     "rel_humidity",
     "wind_speed_ms",
     "cloud_cover",
     "shortwave_rad",
-    "direct_normal_rad",    # <-- Added: Maps afternoon behind-the-meter solar drops
+    "direct_normal_rad",
     "cdd_c",
     "hdd_c",
     "temp_roll_mean_24",
@@ -266,7 +265,7 @@ print("corr(demand, lag_168) =", round(gd.stat.corr("demand_mw", "lag_168"), 3))
 print("corr(demand, cdd_c)   =", round(gd.stat.corr("demand_mw", "cdd_c"), 3))
 
 # 4) THE NUMBER TO BEAT — EIA's own day-ahead forecast on the test window.
-#    Your model has to come in under this MAPE to be worth anything.
+#    The model must beat this MAPE to add value.
 baseline = (gd
     .filter("split = 'test' AND NOT demand_is_missing "
             "AND eia_dayahead_forecast_mw IS NOT NULL")

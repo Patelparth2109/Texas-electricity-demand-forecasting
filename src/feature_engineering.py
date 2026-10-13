@@ -1,70 +1,49 @@
-"""Shared Feature Engineering for Electricity Demand Forecasting
+"""Feature engineering for day-ahead electricity demand forecasting.
 
-This module provides reusable feature transformation functions
-used by both training and inference pipelines.
+Pandas implementation of the notebook-level features built on top of the gold
+table (dev.stlf_gold.demand_features_hourly). Mirrors the logic in
+notebooks/04_model_training.py and jobs/daily_batch_inference.py.
+
+Leakage rule: the forecast horizon is 24 hours, so every demand-derived feature
+uses observations from t-24 or earlier. Weather features may use the target hour
+because a weather forecast is available for it at prediction time.
 """
 
-import pandas as pd
-import numpy as np
 from typing import List
 
+import numpy as np
+import pandas as pd
 
-def add_lag_features(df: pd.DataFrame, target_col: str = 'demand_mw', 
+HORIZON = 24
+
+
+def add_lag_features(df: pd.DataFrame, target_col: str = 'demand_mw',
                      group_col: str = 'respondent') -> pd.DataFrame:
     """
-    Add short-term lag features for demand forecasting.
-    
-    Args:
-        df: DataFrame with demand data
-        target_col: Name of the target column to create lags from
-        group_col: Column to group by (e.g., utility respondent)
-    
-    Returns:
-        DataFrame with lag features added
+    Add demand lags beyond those already in the gold table (24, 48, 168).
+
+    All lags are >= HORIZON; shorter lags are not available at forecast time.
     """
     df = df.copy()
-    
-    # Short-term lags (critical for 24h forecasting)
-    for lag in [1, 2, 3, 6, 12, 72]:
+    for lag in [72, 167, 169]:
         df[f'lag_{lag}'] = df.groupby(group_col)[target_col].shift(lag)
-    
-    # Weekly cycle lags
-    for lag in [167, 169]:
-        df[f'lag_{lag}'] = df.groupby(group_col)[target_col].shift(lag)
-    
     return df
 
 
 def add_rolling_features(df: pd.DataFrame, target_col: str = 'demand_mw',
-                        group_col: str = 'respondent') -> pd.DataFrame:
+                         group_col: str = 'respondent') -> pd.DataFrame:
     """
-    Add rolling statistics over multiple time windows.
-    
-    Args:
-        df: DataFrame with demand data
-        target_col: Name of the target column for rolling statistics
-        group_col: Column to group by
-    
-    Returns:
-        DataFrame with rolling features added
+    Add rolling demand statistics over 3h to 2-week windows.
+
+    Each window ends at t-HORIZON so no demand inside the forecast horizon is used.
     """
     df = df.copy()
-    
-    # Multiple windows: 3h, 6h, 12h, 48h (2 days), 336h (2 weeks)
+    grouped = df.groupby(group_col)[target_col]
     for window in [3, 6, 12, 48, 336]:
-        df[f'roll_mean_{window}'] = df.groupby(group_col)[target_col].transform(
-            lambda x: x.shift(1).rolling(window=window, min_periods=1).mean()
-        )
-        df[f'roll_std_{window}'] = df.groupby(group_col)[target_col].transform(
-            lambda x: x.shift(1).rolling(window=window, min_periods=1).std()
-        )
-        df[f'roll_min_{window}'] = df.groupby(group_col)[target_col].transform(
-            lambda x: x.shift(1).rolling(window=window, min_periods=1).min()
-        )
-        df[f'roll_max_{window}'] = df.groupby(group_col)[target_col].transform(
-            lambda x: x.shift(1).rolling(window=window, min_periods=1).max()
-        )
-    
+        df[f'roll_mean_{window}'] = grouped.transform(lambda x, w=window: x.shift(HORIZON).rolling(w, min_periods=1).mean())
+        df[f'roll_std_{window}'] = grouped.transform(lambda x, w=window: x.shift(HORIZON).rolling(w, min_periods=1).std())
+        df[f'roll_min_{window}'] = grouped.transform(lambda x, w=window: x.shift(HORIZON).rolling(w, min_periods=1).min())
+        df[f'roll_max_{window}'] = grouped.transform(lambda x, w=window: x.shift(HORIZON).rolling(w, min_periods=1).max())
     return df
 
 
@@ -118,13 +97,13 @@ def add_demand_pattern_features(df: pd.DataFrame, target_col: str = 'demand_mw',
     
     # Trend and momentum
     df['demand_trend_weekly'] = (df['lag_24'] - df['lag_168']) / (df['lag_168'] + 1e-6)
-    df['demand_acceleration'] = df['lag_24'] - 2 * df['lag_48'] + df['lag_72']
+    df['demand_acceleration'] = df['lag_24'] - df['lag_48']
     df['demand_diff_24_48'] = df['lag_24'] - df['lag_48']
     df['demand_diff_168_336'] = df['lag_168'] - df.groupby(group_col)[target_col].shift(336)
     
-    # Recent volatility
+    # Recent volatility (window ends at t-HORIZON)
     df['demand_volatility_3h'] = df.groupby(group_col)[target_col].transform(
-        lambda x: x.shift(1).rolling(window=3, min_periods=1).std()
+        lambda x: x.shift(HORIZON).rolling(window=3, min_periods=1).std()
     )
     
     return df
@@ -189,7 +168,8 @@ def engineer_all_features(df: pd.DataFrame,
     """
     Apply all feature engineering transformations in the correct order.
     
-    This is the main function to use for both training and inference.
+    Expects the gold-table columns (calendar, weather, lag_24/48/168,
+    temp_roll_mean_24) to be present.
     
     Args:
         df: DataFrame with base features from gold layer
@@ -205,29 +185,29 @@ def engineer_all_features(df: pd.DataFrame,
     # Step 1: Lag features (depends on target_col)
     if target_col in df.columns:
         df = add_lag_features(df, target_col, group_col)
-        print(f"  ✓ Added lag features")
+        print("  Added lag features")
     
     # Step 2: Rolling features (depends on lags)
     if target_col in df.columns:
         df = add_rolling_features(df, target_col, group_col)
-        print(f"  ✓ Added rolling features")
+        print("  Added rolling features")
     
     # Step 3: Weather interactions (depends on existing weather features)
     df = add_weather_interaction_features(df)
-    print(f"  ✓ Added weather interactions")
+    print("  Added weather interactions")
     
     # Step 4: Demand patterns (depends on lags)
     if target_col in df.columns:
         df = add_demand_pattern_features(df, target_col, group_col)
-        print(f"  ✓ Added demand patterns")
+        print("  Added demand patterns")
     
     # Step 5: Calendar features
     df = add_calendar_features(df, timestamp_col)
-    print(f"  ✓ Added calendar features")
+    print("  Added calendar features")
     
     # Step 6: Weather trends
     df = add_weather_trend_features(df, group_col)
-    print(f"  ✓ Added weather trends")
+    print("  Added weather trends")
     
     print(f"Feature engineering complete: {len(df.columns)} total columns")
     

@@ -34,7 +34,7 @@
 # MAGIC * **Runs**: Every day at 2:00 AM UTC
 # MAGIC * **Duration**: ~5 minutes (scoring only)
 # MAGIC * **Input**: Latest demand + next-day weather forecast
-# MAGIC * **Output**: 24 hourly forecasts to `dev.stlf_gold.daily_forecasts`
+# MAGIC * **Output**: 24 hourly forecasts to `dev.stlf_gold.demand_predictions`
 # MAGIC
 # MAGIC ---
 
